@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "gpt-crypto-trading"
+version = "0.1.0"
+description = ""
+authors = ["Nejc Ševerkar <nseverkar@gmail.com>"]
+readme = "README.md"
+packages = [{include = "gpt_crypto_trading"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+ccxt = "^3.0.69"
+python-dotenv = "^1.0.0"
+openai = "^0.27.4"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
