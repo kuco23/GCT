@@ -1,15 +1,15 @@
-from dotenv import dotenv_values
-import logging
+import dotenv
 from time import sleep
-from lib import ArticleProvider, TradeAdvisor, Exchange, getFileLogger
+from lib import (
+    ArticleProvider, TradeAdvisor, Exchange,
+    getFileLogger, news_getter, events_getter
+)
 
-config = dotenv_values()
+config = dotenv.dotenv_values()
 
 INFORMED_SELL_INTERVAL = 60 * 10 # 10 minutes
 EVENT_FETCH_INTERVAL = 60 * 30 # 30 minutes
 
-cryptonews_url_events = f'https://cryptonews-api.com/api/v1/events?&items=10&token={config["CRYPTONEWS_API_KEY"]}'
-cryptonews_url_news = f'https://cryptonews-api.com/api/v1/category?section=alltickers&items=10&page=1&token={config["CRYPTONEWS_API_KEY"]}'
 openai_assistant_config = """
 You are an experienced crypto trader. I will provide you with a list of recent crypto articles and
 you will decide which cryptocurrencies to buy or sell. Your response is always in one of two formats:
@@ -24,13 +24,13 @@ exchange_config = {
 }
 
 logger = getFileLogger('trade')
-articleProvider = ArticleProvider(cryptonews_url_events, logger)
+articleProvider = ArticleProvider([news_getter, events_getter], logger)
 tradeAdvisor = TradeAdvisor(openai_assistant_config, config['OPENAI_SECRET'], logger)
 exchange = Exchange(config['EXCHANGE'], exchange_config, logger)
 
 slept = 0
 while True:
-    if slept > EVENT_FETCH_INTERVAL:
+    if slept > EVENT_FETCH_INTERVAL or slept == 0:
         slept = 0
         articles = articleProvider.getArticles()
         if len(articles) > 0:
