@@ -1,6 +1,7 @@
+from typing import List
 from collections import namedtuple
 from datetime import datetime, timedelta
-import json, openai, ccxt
+import re, json, openai, ccxt
 
 TradeAdvice = namedtuple('TradeAdvice', ['position', 'asset', 'duration'])
 TradeOrder = namedtuple('Order', ['position', 'asset', 'amount', 'duration'])
@@ -9,29 +10,31 @@ class ArticleProvider:
 
     def __init__(self, article_getters, logger):
         self._article_getters = article_getters
-        self._last_article_times = [datetime(1970, 1, 1) for _ in range(len(article_getters))]
+        start_time = datetime.now() - timedelta(minutes=90)
+        self._last_updated = [start_time for _ in range(len(article_getters))]
         self._logger = logger
 
     def getArticles(self):
         articles = []
-        for i, (last_article_time, article_getter) in enumerate(zip(
-            self._last_article_times, self._article_getters
+        for i, (last_updated, article_getter) in enumerate(zip(
+            self._last_updated, self._article_getters
         )):
             for article, article_time in article_getter():
-                if article_time > self._last_article_times[i]:
+                if article_time > self._last_updated[i]:
                     articles.append(article)
-                    if article_time > last_article_time:
-                        last_article_time = article_time
+                    if article_time > last_updated:
+                        last_updated = article_time
                     self._logger.info('trading on article "%s"', article['title'])
-            self._last_article_times[i] = last_article_time
+            self._last_updated[i] = last_updated
         return articles
 
 class TradeAdvisor:
+    _parser_regex = re.compile('(?P<pos>buy|sell) (?P<symbol>[A-Z]{3,4})(?P<duration>[0-9]{1,2})?')
 
     def __init__(self, ai_assistant_config, api_key, logger):
         self.ai_assistant_config = ai_assistant_config
-        openai.api_key = api_key
         self._logger = logger
+        openai.api_key = api_key
 
     def _getGptResponse(self, prompt):
         completion = openai.ChatCompletion.create(
@@ -43,26 +46,21 @@ class TradeAdvisor:
         )
         return completion.choices[0].message.content
 
-    def _parseGptResponse(self, response) -> TradeAdvice:
-        parts = response.split()
-        if len(parts) <= 1: return
-        position, asset, *parts = parts
-        if position == 'sell':
-            return TradeAdvice(position, asset, None)
-        elif position == 'buy':
-            if len(parts) == 2: return
-            if asset == 'all': asset = 'AVAX'
-            duration = parts[0]
-            if not duration.isdigit(): return
-            return TradeAdvice(position, asset, int(duration))
+    def _parseGptResponse(self, response) -> List[TradeAdvice]:
+        parsed_raw = self._parser_regex.findall(response)
+        trade_advices = []
+        for pos, symbol, duration in parsed_raw:
+            if pos == 'buy' and symbol == 'all':
+                symbol = 'AVAX'
+            trade_advices.append(TradeAdvice(pos, symbol, int(duration or 0)))
+        return trade_advices
 
-    def getTradeAdvice(self, articles):
-        response = self._getGptResponse(json.dumps(articles))
-        parsed = self._parseGptResponse(response)
-        if parsed is not None:
-            self._logger.info('trade advice: %s', parsed)
-            return self._parseGptResponse(response)
-        self._logger.info('invalid gpt response: %s', response)
+    def getTradeAdvices(self, articles):
+        gpt_response = self._getGptResponse(json.dumps(articles))
+        self._logger.info(f'chat-gpt trade advice: {gpt_response}')
+        trade_advices = self._parseGptResponse(gpt_response)
+        self._logger.info(f'parsed trade advice: {trade_advices}')
+        return trade_advices
 
 class Exchange:
 

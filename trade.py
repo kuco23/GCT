@@ -34,8 +34,7 @@ while True:
         slept = 0
         articles = articleProvider.getArticles()
         if len(articles) > 0:
-            tradeAdvice = tradeAdvisor.getTradeAdvice(articles)
-            if tradeAdvice is not None:
+            for tradeAdvice in tradeAdvisor.getTradeAdvices(articles):
                 exchange.executeTradeAdvice(tradeAdvice)
         else:
             logger.info('no new articles')
