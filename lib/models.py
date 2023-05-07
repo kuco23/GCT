@@ -96,11 +96,11 @@ class Exchange:
         if order.asset not in self._asset_balances: return
         symbol = f'{order.asset}/USDT'
         if order.position == 'buy':
-            self.exchange.create_market_buy_order(symbol, order.amount)
+            self.exchange.create_market_buy_order(symbol, format(order.amount, 'f'))
             self._buy_time[order.asset] = datetime.now()
             self._sell_time[order.asset] = datetime.now() + timedelta(hours=order.duration)
         elif order.position == 'sell':
-            self.exchange.create_market_sell_order(symbol, order.amount)
+            self.exchange.create_market_sell_order(symbol, format(order.amount, 'f'))
             del self._buy_time[order.asset]
             del self._sell_time[order.asset]
         else: return
