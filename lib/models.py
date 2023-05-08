@@ -130,7 +130,7 @@ class Exchange:
     def _sellOverdueAssets(self):
         for asset, time in self._sell_time.items():
             if datetime.now() > time:
-                self._executeOrder(TradeOrder('sell', asset, self._asset_balances[asset]))
+                self._sellAsset(asset)
 
     def sellRequiredAssets(self):
         self._sellOverdueAssets()
