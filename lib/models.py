@@ -10,7 +10,7 @@ class ArticleProvider:
 
     def __init__(self, article_getters, logger):
         self._article_getters = article_getters
-        start_time = datetime.now() - timedelta(minutes=90)
+        start_time = datetime(1970, 1, 1)
         self._last_updated = [start_time for _ in range(len(article_getters))]
         self._logger = logger
 
