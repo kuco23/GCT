@@ -52,7 +52,7 @@ class TradeAdvisor:
         for pos, symbol, duration in parsed_raw:
             if pos == 'buy' and symbol == 'all':
                 symbol = 'AVAX'
-            trade_advices.append(TradeAdvice(pos, symbol, int(duration or 0)))
+            trade_advices.append(TradeAdvice(pos, symbol, int(duration or 24)))
         return trade_advices
 
     def getTradeAdvices(self, articles):
@@ -137,7 +137,7 @@ class Exchange:
 
     def executeTradeAdvice(self, advice: TradeAdvice):
         if advice.position == 'buy':
-            self._buyAsset(advice.asset, 20, advice.duration)
+            self._buyAsset(advice.asset, 50, advice.duration)
         elif advice.position == 'sell':
             if advice.asset == 'all': self._sellAllAssets()
             if advice.asset in self._asset_balances:
