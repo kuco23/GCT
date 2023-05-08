@@ -29,7 +29,7 @@ class ArticleProvider:
         return articles
 
 class TradeAdvisor:
-    _parser_regex = re.compile('(?P<pos>buy|sell) (?P<symbol>[A-Z]{3,4}|all)(?P<duration>[0-9]{1,2})?')
+    _parser_regex = re.compile('(?P<pos>buy|Buy|sell|Sell) (?P<symbol>[A-Z]{3,4}|all)(?: (?P<duration>[0-9]{1,2}))?')
 
     def __init__(self, ai_assistant_config, api_key, logger):
         self.ai_assistant_config = ai_assistant_config
@@ -52,7 +52,7 @@ class TradeAdvisor:
         for pos, symbol, duration in parsed_raw:
             if pos == 'buy' and symbol == 'all':
                 symbol = 'AVAX'
-            trade_advices.append(TradeAdvice(pos, symbol, int(duration or 24)))
+            trade_advices.append(TradeAdvice(pos.lower(), symbol, int(duration or 24)))
         return trade_advices
 
     def getTradeAdvices(self, articles):
