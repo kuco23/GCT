@@ -30,3 +30,5 @@ def events_getter():
         'text': article['event_text'],
         'symbols': article['tickers']
     }, _formatDate(article['date'])) for article in articles]
+
+news_getters = [news_getter, events_getter]

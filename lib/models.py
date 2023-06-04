@@ -24,21 +24,22 @@ class ArticleProvider:
                     articles.append(article)
                     if article_time > last_updated:
                         last_updated = article_time
-                    self._logger.info('trading on article "%s"', article['title'])
+                    self._logger.info('trading on article "%s"', article.get('title'))
             self._last_updated[i] = last_updated
         return articles
 
 class TradeAdvisor:
     _parser_regex = re.compile('(?P<pos>buy|Buy|sell|Sell) (?P<symbol>[A-Z]{3,4}|all)(?: (?P<duration>[0-9]{1,2}))?')
 
-    def __init__(self, ai_assistant_config, api_key, logger):
+    def __init__(self, ai_assistant_config, ai_model_name, api_key, logger):
         self.ai_assistant_config = ai_assistant_config
+        self.ai_model_name = ai_model_name
         self._logger = logger
         openai.api_key = api_key
 
     def _getGptResponse(self, prompt):
         completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model=self.ai_model_name,
             messages=[
                 {"role": "system", "content": self.ai_assistant_config},
                 {"role": "user", "content": prompt}
