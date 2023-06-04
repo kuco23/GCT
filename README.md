@@ -6,14 +6,14 @@ By default the app uses [cryptonews-api](https://cryptonews-api.com/) for news a
 
 ## Setup and running
 To configure the repo, you should fill in the `template.env` file with api keys, then rename it to `.env`.
-Running the trading bot then requires running
+Running the trading bot is done with
 ```python
 python trade.py
 ```
-The app will first convert all your assets to USDT. Any time a buy order is required, it spends 50% of user USDT balance.
+The app first converts all assets to USDT. Any time a buy order is required, it spends 50% of the USDT balance.
 The app runs indefinitely, but can break due to many unhandled errors. To stop it, press `ctrl + c`.
 > **Note:**
-> Use at your own risk. This is a simple non-professional project.
+> This is a simple non-professional project, use at your own risk.
 
 ## Changing defaults
 To change or add crypto news sources, you can edit the `lib/cryptonews.py` file. All sources need to return a list of tuples of the form `(news, timestamp)`, where `news` is any data and `timestamp` is the time at which the news was published.
