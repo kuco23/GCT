@@ -1,6 +1,6 @@
 # gpt-crypto-trading
 
-This is a simple project that connecst [Crypto News API](https://cryptonews-api.com/), [ChatGPT](https://openai.com/blog/chatgpt) and [Binance](https://www.binance.com/en) to create a trading bot that trades crypto based on recent news, with strategies determined by chatGPT.
+This is a simple project that connects [Crypto News API](https://cryptonews-api.com/) and [ChatGPT](https://openai.com/blog/chatgpt) with [Binance](https://www.binance.com/en) to create a trading bot that trades based on recent news, with strategies determined by chatGPT.
 
 ## How it works
 
