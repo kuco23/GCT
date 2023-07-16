@@ -2,13 +2,12 @@ import dotenv
 from time import sleep
 from lib import (
     ArticleProvider, TradeAdvisor, Exchange,
-    getFileLogger, news_getters
+    logger, news_getters
 )
 
 config = dotenv.dotenv_values()
 
-INFORMED_SELL_INTERVAL = 60 * 10 # 10 minutes
-EVENT_FETCH_INTERVAL = 60 * 30 # 30 minutes
+ACTION_INTERVAL = 60 * 120 # 120 minutes
 
 openai_assistant_config = """
 You are an experienced crypto trader. I will provide you with a list of recent crypto articles and
@@ -23,21 +22,17 @@ exchange_config = {
     'secret': config['EXCHANGE_SECRET']
 }
 
-logger = getFileLogger('trade')
-articleProvider = ArticleProvider(news_getters, logger)
-tradeAdvisor = TradeAdvisor(openai_assistant_config, config['GPT_MODEL_NAME'], config['OPENAI_SECRET'], logger)
-exchange = Exchange(config['EXCHANGE'], exchange_config, logger)
+articleProvider = ArticleProvider(news_getters)
+tradeAdvisor = TradeAdvisor(openai_assistant_config, config['GPT_MODEL_NAME'], config['OPENAI_SECRET'])
+exchange = Exchange(config['EXCHANGE'], exchange_config)
 
-slept = 0
+from lib import TradeAdvice
+
 while True:
-    if slept > EVENT_FETCH_INTERVAL or slept == 0:
-        slept = 0
+    try:
         articles = articleProvider.getArticles()
-        if len(articles) > 0:
-            for tradeAdvice in tradeAdvisor.getTradeAdvices(articles):
-                exchange.executeTradeAdvice(tradeAdvice)
-        else:
-            logger.info('no new articles')
-    exchange.sellRequiredAssets()
-    sleep(INFORMED_SELL_INTERVAL)
-    slept += INFORMED_SELL_INTERVAL
+        trade_advices = tradeAdvisor.getTradeAdvices(articles)
+        exchange.executeNewTradeAdviceBatch(trade_advices)
+    except Exception as e:
+        logger.error(f'unhandled exception {e}')
+    sleep(ACTION_INTERVAL)

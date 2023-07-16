@@ -1,20 +1,48 @@
-from typing import List
+from typing import List, Callable, Literal as LiteralString
 from collections import namedtuple
+from time import sleep
 from datetime import datetime, timedelta
 import re, json, openai, ccxt
+from requests.exceptions import ConnectionError, ReadTimeout
 
-TradeAdvice = namedtuple('TradeAdvice', ['position', 'asset', 'duration'])
-TradeOrder = namedtuple('Order', ['position', 'asset', 'amount', 'duration'])
+from .database import getPositions, storePositions
+from .shared import logger, TradeAdvice, TradeOrder, ArticleData
+
+
+CONNECTION_RETRY_PERIOD = 2 # seconds
+CONNECTION_RETRY_COUNT = 5 # times to retry connection
+MINUMUM_BUY_AMOUNT = 10 # USDT
+
+def forceResponse(fun):
+    def wrapper(self, *args):
+        outside_scope_err = None # ok have no idea why err is not in scope
+        for _ in range(CONNECTION_RETRY_COUNT):
+            try: return fun(self, *args)
+            except ConnectionError as err:
+                outside_scope_err = err
+                logger.error('handled exception', err)
+            except ReadTimeout as err:
+                outside_scope_err = err
+                logger.error('handled exception', err)
+            except Exception as err:
+                outside_scope_err = err
+                logger.error('handled exception', err)
+                break
+            sleep(CONNECTION_RETRY_PERIOD)
+        if fun.__name__ == '_sellAsset':
+            logger.error(f'failed selling {args[0]} because {outside_scope_err}')
+        elif fun.__name__ == '_buyAsset':
+            logger.error(f'failed buying {args[0]} because {outside_scope_err}')
+    return wrapper
 
 class ArticleProvider:
 
-    def __init__(self, article_getters, logger):
+    def __init__(self, article_getters: List[Callable[[], List[ArticleData]]]):
         self._article_getters = article_getters
         start_time = datetime(1970, 1, 1)
         self._last_updated = [start_time for _ in range(len(article_getters))]
-        self._logger = logger
 
-    def getArticles(self):
+    def getArticles(self) -> List[ArticleData]:
         articles = []
         for i, (last_updated, article_getter) in enumerate(zip(
             self._last_updated, self._article_getters
@@ -24,18 +52,26 @@ class ArticleProvider:
                     articles.append(article)
                     if article_time > last_updated:
                         last_updated = article_time
-                    self._logger.info('trading on article "%s"', article.get('title'))
+                    logger.info('trading on article "%s"', article.get('title'))
             self._last_updated[i] = last_updated
         return articles
 
 class TradeAdvisor:
     _parser_regex = re.compile('(?P<pos>buy|Buy|sell|Sell) (?P<symbol>[A-Z]{3,4}|all)(?: (?P<duration>[0-9]{1,2}))?')
 
-    def __init__(self, ai_assistant_config, ai_model_name, api_key, logger):
+    def __init__(self, ai_assistant_config: LiteralString, ai_model_name: LiteralString, api_key: LiteralString):
         self.ai_assistant_config = ai_assistant_config
         self.ai_model_name = ai_model_name
-        self._logger = logger
         openai.api_key = api_key
+
+    def getTradeAdvices(self, articles: List[ArticleData]) -> List[TradeAdvice]:
+        if len(articles) > 0:
+            gpt_response = self._getGptResponse(json.dumps(articles))
+            logger.info(f'chat-gpt trade advice:\n{gpt_response}')
+            trade_advices = self._parseGptResponse(gpt_response)
+            logger.info(f'parsed trade advice:\n{trade_advices}')
+            return trade_advices
+        else: return []
 
     def _getGptResponse(self, prompt):
         completion = openai.ChatCompletion.create(
@@ -56,90 +92,88 @@ class TradeAdvisor:
             trade_advices.append(TradeAdvice(pos.lower(), symbol, int(duration or 24)))
         return trade_advices
 
-    def getTradeAdvices(self, articles):
-        gpt_response = self._getGptResponse(json.dumps(articles))
-        self._logger.info(f'chat-gpt trade advice: {gpt_response}')
-        trade_advices = self._parseGptResponse(gpt_response)
-        self._logger.info(f'parsed trade advice: {trade_advices}')
-        return trade_advices
-
 class Exchange:
 
-    def __init__(self, exchange_name, config, logger, max_fee=0.001):
+    def __init__(self, exchange_name: LiteralString, config, max_fee=0.001):
         self.exchange = getattr(ccxt, exchange_name)(config)
         self.max_fee = max_fee
 
-        self._logger = logger
-        self._asset_balances = {}
-        self._buy_time = {}
-        self._sell_time = {}
+        self._cached_balances = {}
+        self._cached_positions = {}
 
-        self._refreshBalances()
-        self._sellAllAssets() # need implemented db
-
-    def _convertUsdtToAssetWithPrice(self, usdt_amount, asset_price):
-        return usdt_amount / asset_price
-
-    def _convertUsdtToAsset(self, asset, usdt_amount):
-        asset_price = self.exchange.fetch_ticker(f'{asset}/USDT')['last']
-        return self._convertUsdtToAssetWithPrice(usdt_amount, asset_price)
-
-    def _refreshBalances(self):
-        self._asset_balances = {}
-        exchange_balance = self.exchange.fetch_balance()['info']['balances']
-        for info in exchange_balance:
-            self._asset_balances[info['asset']] = float(info['free'])
-
-    def _executeOrder(self, order: TradeOrder):
-        if order.asset not in self._asset_balances: self._refreshBalances()
-        if order.asset not in self._asset_balances: return
-        symbol = f'{order.asset}/USDT'
-        if order.position == 'buy':
-            self.exchange.create_market_buy_order(symbol, format(order.amount, 'f'))
-            self._buy_time[order.asset] = datetime.now()
-            self._sell_time[order.asset] = datetime.now() + timedelta(hours=order.duration)
-        elif order.position == 'sell':
-            self.exchange.create_market_sell_order(symbol, format(order.amount, 'f'))
-            del self._buy_time[order.asset]
-            del self._sell_time[order.asset]
-        else: return
-        self._logger.info(f'executed {order}')
-
-    def _sellAsset(self, asset, percent=100):
-        try:
-            amount_asset = self._asset_balances[asset] * percent / 100 * (1 - self.max_fee)
-            if amount_asset > 0:
-                self._executeOrder(TradeOrder('sell', asset, amount_asset, None))
-        except Exception as e:
-            self._logger.info(f'failed to sell {asset} because {e}')
-
-    def _buyAsset(self, asset, percent=100, duration=24):
-        amount_usdt = self._asset_balances['USDT'] * percent / 100 * (1 - self.max_fee)
-        if amount_usdt == 0: self._logger.info(f'cannot buy {asset} because no USDT')
-        try:
-            amount_asset = self._convertUsdtToAsset(asset, amount_usdt)
-            if amount_asset > 0:
-                self._executeOrder(TradeOrder('buy', asset, amount_asset, duration))
-        except Exception as e:
-            self._logger.info(f'failed to buy {asset} because {e}')
-
-    def _sellAllAssets(self):
-        for asset, balance in self._asset_balances.items():
-            if balance > 0 and asset != 'USDT':
-                self._sellAsset(asset)
-
-    def _sellOverdueAssets(self):
-        for asset, time in self._sell_time.items():
-            if datetime.now() > time:
-                self._sellAsset(asset)
-
-    def sellRequiredAssets(self):
+    def executeNewTradeAdviceBatch(self, advices: List[TradeAdvice]):
+        self._cacheBalances()
+        self._cached_positions = getPositions()
         self._sellOverdueAssets()
+        for advice in advices:
+            self._executeTradeAdvice(advice)
+        storePositions(self._cached_positions)
 
-    def executeTradeAdvice(self, advice: TradeAdvice):
+    def _executeTradeAdvice(self, advice: TradeAdvice):
         if advice.position == 'buy':
             self._buyAsset(advice.asset, 50, advice.duration)
         elif advice.position == 'sell':
-            if advice.asset == 'all': self._sellAllAssets()
-            if advice.asset in self._asset_balances:
+            if advice.asset == 'all':
+                # self._sellAllAssets()
+                pass
+            if advice.asset in self._cached_balances: # and advice.asset not in self._cached_positions:
                 self._sellAsset(advice.asset)
+
+    def _sellOverdueAssets(self):
+        for asset in self._cached_positions:
+            end_time = self._cached_positions[asset]['sell_time']
+            if datetime.now() > end_time:
+                self._sellAsset(asset)
+
+    def _sellAllAssets(self):
+        for asset, balance in self._cached_balances.items():
+            if balance > 0 and asset != 'USDT':
+                self._sellAsset(asset)
+
+    @forceResponse
+    def _sellAsset(self, asset, percent=100):
+        amount_asset = self._cached_balances[asset] * percent / 100 * (1 - self.max_fee)
+        if amount_asset > 0:
+            amount_usdt = self._convertAssetToUsdt(asset, amount_asset)
+            self._executeOrder(TradeOrder('sell', asset, amount_asset, None))
+            self._cached_balances['USDT'] += amount_usdt
+
+    @forceResponse
+    def _buyAsset(self, asset, percent=100, duration=24):
+        amount_usdt = self._cached_balances['USDT'] * percent / 100 * (1 - self.max_fee)
+        if amount_usdt < MINUMUM_BUY_AMOUNT:
+            logger.info(f'trying to buy {asset} with too little USDT')
+        else:
+            amount_asset = self._convertUsdtToAsset(asset, amount_usdt)
+            self._executeOrder(TradeOrder('buy', asset, amount_asset, duration))
+            self._cached_balances['USDT'] -= amount_usdt
+
+    def _executeOrder(self, order: TradeOrder):
+        if order.asset not in self._cached_balances: return
+        symbol = f'{order.asset}/USDT'
+        if order.position == 'buy':
+            self.exchange.create_market_buy_order(symbol, format(order.amount, 'f'))
+            self._cached_positions[order.asset] = {
+                'buy_time': datetime.now(),
+                'sell_time': datetime.now() + timedelta(hours=order.duration)
+            }
+        elif order.position == 'sell':
+            self.exchange.create_market_sell_order(symbol, format(order.amount, 'f'))
+            if order.asset in self._cached_positions:
+                del self._cached_positions[order.asset]
+        else: return
+        logger.info(f'executed {order}')
+
+    def _convertAssetToUsdt(self, asset, asset_amount):
+        asset_price = self.exchange.fetch_ticker(f'{asset}/USDT')['last']
+        return asset_amount * asset_price
+
+    def _convertUsdtToAsset(self, asset, usdt_amount):
+        asset_price = self.exchange.fetch_ticker(f'{asset}/USDT')['last']
+        return usdt_amount / asset_price
+
+    def _cacheBalances(self):
+        self._cached_balances = {}
+        exchange_balance = self.exchange.fetch_balance()['info']['balances']
+        for info in exchange_balance:
+            self._cached_balances[info['asset']] = float(info['free'])

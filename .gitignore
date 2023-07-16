@@ -130,3 +130,5 @@ dmypy.json
 
 # project specific
 test*
+trade.log
+positions.json
