@@ -120,7 +120,7 @@ class Exchange:
                 self._sellAsset(advice.asset)
 
     def _sellOverdueAssets(self):
-        for asset in self._cached_positions:
+        for asset in list(self._cached_positions.keys()): # dict can change length during iteration
             end_time = self._cached_positions[asset]['sell_time']
             if datetime.now() > end_time:
                 self._sellAsset(asset)
