@@ -10,7 +10,7 @@ from .shared import logger, TradeAdvice, TradeOrder, ArticleData
 
 
 CONNECTION_RETRY_PERIOD = 2 # seconds
-CONNECTION_RETRY_COUNT = 5 # times to retry connection
+CONNECTION_RETRY_COUNT = 3 # times to retry connection
 MINUMUM_BUY_AMOUNT = 10 # USDT
 
 def forceResponse(fun):
@@ -97,13 +97,12 @@ class Exchange:
     def __init__(self, exchange_name: LiteralString, config, max_fee=0.001):
         self.exchange = getattr(ccxt, exchange_name)(config)
         self.max_fee = max_fee
-
         self._cached_balances = {}
         self._cached_positions = {}
 
     def executeNewTradeAdviceBatch(self, advices: List[TradeAdvice]):
         self._cacheBalances()
-        self._cached_positions = getPositions()
+        self._cachePositions()
         self._sellOverdueAssets()
         for advice in advices:
             self._executeTradeAdvice(advice)
@@ -114,7 +113,7 @@ class Exchange:
             self._buyAsset(advice.asset, 50, advice.duration)
         elif advice.position == 'sell':
             if advice.asset == 'all':
-                # self._sellAllAssets()
+                self._sellAllAssets()
                 pass
             if advice.asset in self._cached_balances: # and advice.asset not in self._cached_positions:
                 self._sellAsset(advice.asset)
@@ -126,7 +125,7 @@ class Exchange:
                 self._sellAsset(asset)
 
     def _sellAllAssets(self):
-        for asset, balance in self._cached_balances.items():
+        for asset, balance in list(self._cached_balances.items()):
             if balance > 0 and asset != 'USDT':
                 self._sellAsset(asset)
 
@@ -134,7 +133,7 @@ class Exchange:
     def _sellAsset(self, asset, percent=100):
         amount_asset = self._cached_balances[asset] * percent / 100 * (1 - self.max_fee)
         if amount_asset > 0:
-            amount_usdt = self._convertAssetToUsdt(asset, amount_asset)
+            amount_usdt = self._assetToUSDT(asset, amount_asset)
             self._executeOrder(TradeOrder('sell', asset, amount_asset, None))
             self._cached_balances['USDT'] += amount_usdt
 
@@ -144,7 +143,7 @@ class Exchange:
         if amount_usdt < MINUMUM_BUY_AMOUNT:
             logger.info(f'trying to buy {asset} with too little USDT')
         else:
-            amount_asset = self._convertUsdtToAsset(asset, amount_usdt)
+            amount_asset = self._USDTToAsset(asset, amount_usdt)
             self._executeOrder(TradeOrder('buy', asset, amount_asset, duration))
             self._cached_balances['USDT'] -= amount_usdt
 
@@ -164,11 +163,11 @@ class Exchange:
         else: return
         logger.info(f'executed {order}')
 
-    def _convertAssetToUsdt(self, asset, asset_amount):
+    def _assetToUSDT(self, asset, asset_amount):
         asset_price = self.exchange.fetch_ticker(f'{asset}/USDT')['last']
         return asset_amount * asset_price
 
-    def _convertUsdtToAsset(self, asset, usdt_amount):
+    def _USDTToAsset(self, asset, usdt_amount):
         asset_price = self.exchange.fetch_ticker(f'{asset}/USDT')['last']
         return usdt_amount / asset_price
 
@@ -177,3 +176,6 @@ class Exchange:
         exchange_balance = self.exchange.fetch_balance()['info']['balances']
         for info in exchange_balance:
             self._cached_balances[info['asset']] = float(info['free'])
+
+    def _cachePositions(self):
+        self._cached_positions = getPositions()

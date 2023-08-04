@@ -29,7 +29,9 @@ I am not promoting the cryptonews-api here in any way, and the code is generic e
 
 ## Replacing trading platform
 
-The trading platform can be changed from binance to any supported by the [ccxt](https://github.com/ccxt/ccxt) library, though note that other platforms have not been tested and may not work.
+The trading platform can be changed from binance to any supported by the [ccxt](https://github.com/ccxt/ccxt) library, though note that other platforms have not been tested and may not work. If you stick with binance, some things to keep in mind:
+- enable your API key having access when sent from any IP,
+- if getting `Binance error: Timestamp for this request was 1000ms ahead of the server's time` error, try [this solution](https://www.digitalocean.com/community/tutorials/how-to-set-up-time-synchronization-on-ubuntu-16-04).
 
 ## TODO
 - [x] Handle connection errors when fetching news, querying chatGPT, and making trades.
