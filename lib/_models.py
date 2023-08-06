@@ -1,12 +1,11 @@
 from typing import List, Callable, Literal as LiteralString
-from collections import namedtuple
 from time import sleep
 from datetime import datetime, timedelta
 import re, json, openai, ccxt
 from requests.exceptions import ConnectionError, ReadTimeout
 
-from .database import getPositions, storePositions
-from .shared import logger, TradeAdvice, TradeOrder, ArticleData
+from ._storage import getPositions, storePositions
+from ._shared import logger, TradeAdvice, TradeOrder, ArticleData
 
 
 CONNECTION_RETRY_PERIOD = 2 # seconds
@@ -69,7 +68,7 @@ class TradeAdvisor:
             gpt_response = self._getGptResponse(json.dumps(articles))
             logger.info(f'chat-gpt trade advice:\n{gpt_response}')
             trade_advices = self._parseGptResponse(gpt_response)
-            logger.info(f'parsed trade advice:\n{trade_advices}')
+            logger.info(f'parsed trade advice: {trade_advices}')
             return trade_advices
         else: return []
 
@@ -104,16 +103,17 @@ class Exchange:
         self._cacheBalances()
         self._cachePositions()
         self._sellOverdueAssets()
-        for advice in advices:
+        for advice in sorted(advices, key=lambda x: (x.position == 'buy', x.duration)):
             self._executeTradeAdvice(advice)
         storePositions(self._cached_positions)
 
     def _executeTradeAdvice(self, advice: TradeAdvice):
+        if advice.asset == 'USDT': return
         if advice.position == 'buy':
             self._buyAsset(advice.asset, 50, advice.duration)
         elif advice.position == 'sell':
             if advice.asset == 'all':
-                self._sellAllAssets()
+                # self._sellAllAssets()
                 pass
             if advice.asset in self._cached_balances: # and advice.asset not in self._cached_positions:
                 self._sellAsset(advice.asset)

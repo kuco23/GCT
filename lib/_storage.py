@@ -29,4 +29,4 @@ def storePositions(positions):
                 'buy_time': str(positions[asset]['buy_time']),
                 'sell_time': str(positions[asset]['sell_time'])
             } for asset in positions
-        }, positions_file)
+        }, positions_file, indent=4)

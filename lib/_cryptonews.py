@@ -1,7 +1,7 @@
 from typing import List, Callable
 from datetime import datetime
 import json, requests
-from .shared import config, ArticleData
+from ._shared import config, ArticleData
 
 
 cryptonews_url_events = f'https://cryptonews-api.com/api/v1/events?&items=10&token={config["CRYPTONEWS_API_KEY"]}'
