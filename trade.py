@@ -7,7 +7,7 @@ from lib import (
 
 config = dotenv.dotenv_values()
 
-ACTION_INTERVAL = 60 * 30 # 120 minutes
+ACTION_INTERVAL = 60 * 30 # 30 minutes
 
 openai_assistant_config = """
 You are an experienced crypto trader. I will provide you with a list of recent crypto articles and

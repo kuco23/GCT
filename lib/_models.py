@@ -87,7 +87,7 @@ class TradeAdvisor:
         trade_advices = []
         for pos, symbol, duration in parsed_raw:
             if pos == 'buy' and symbol == 'all':
-                symbol = 'AVAX'
+                symbol = 'BTC'
             trade_advices.append(TradeAdvice(pos.lower(), symbol, int(duration or 24)))
         return trade_advices
 
