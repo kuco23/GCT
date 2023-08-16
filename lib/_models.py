@@ -11,6 +11,7 @@ from ._shared import logger, TradeAdvice, TradeOrder, ArticleData
 CONNECTION_RETRY_PERIOD = 2 # seconds
 CONNECTION_RETRY_COUNT = 3 # times to retry connection
 MINUMUM_BUY_AMOUNT = 10 # USDT
+MINUMUM_SELL_AMOUNT = 10 # USDT
 
 def forceResponse(fun):
     def wrapper(self, *args):
@@ -134,8 +135,11 @@ class Exchange:
         amount_asset = self._cached_balances[asset] * percent / 100 * (1 - self.max_fee)
         if amount_asset > 0:
             amount_usdt = self._assetToUSDT(asset, amount_asset)
-            self._executeOrder(TradeOrder('sell', asset, amount_asset, None))
-            self._cached_balances['USDT'] += amount_usdt
+            if amount_usdt < MINUMUM_SELL_AMOUNT:
+                logger.info(f'trying to sell {asset} with too little USDT')
+            else:
+                self._executeOrder(TradeOrder('sell', asset, amount_asset, None))
+                self._cached_balances['USDT'] += amount_usdt
 
     @forceResponse
     def _buyAsset(self, asset, percent=100, duration=24):
